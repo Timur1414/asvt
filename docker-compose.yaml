@@ -1,0 +1,29 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deployments/docker/Dockerfile_api
+    container_name: api
+    restart: always
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    expose:
+      - "8080"
+    volumes:
+      - ./log:/app/log
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -fsS http://127.0.0.1:8080/healthz" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - asvt-network
+
+networks:
+  asvt-network:
+    name: asvt-network
+    driver: bridge
