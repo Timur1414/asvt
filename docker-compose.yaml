@@ -2,7 +2,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: deployments/docker/Dockerfile_api
+      dockerfile: deployment/docker/Dockerfile_api
     container_name: api
     restart: always
     read_only: true
