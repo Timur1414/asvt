@@ -35,6 +35,8 @@ services:
       - "8889" # WebRTC
     # volumes:
     #   - ./mediamtx.yml:/mediamtx.yml
+    networks:
+      - asvt-network
 
 networks:
   asvt-network:
