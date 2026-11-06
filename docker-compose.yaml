@@ -23,20 +23,20 @@ services:
     networks:
       - asvt-network
 
-  mediamtx:
-    image: bluenviron/mediamtx:latest
-    container_name: mediamtx
-    restart: unless-stopped
-    ports:
-      - "8554:8554" # RTSP
-      - "1935:1935" # RTMP
-    expose:
-      - "8888" # HLS
-      - "8889" # WebRTC
-    # volumes:
-    #   - ./mediamtx.yml:/mediamtx.yml
-    networks:
-      - asvt-network
+#  mediamtx:
+#    image: bluenviron/mediamtx:latest
+#    container_name: mediamtx
+#    restart: unless-stopped
+#    ports:
+#      - "8554:8554" # RTSP
+#      - "1935:1935" # RTMP
+#    expose:
+#      - "8888" # HLS
+#      - "8889" # WebRTC
+#    # volumes:
+#    #   - ./mediamtx.yml:/mediamtx.yml
+#    networks:
+#      - asvt-network
 
 networks:
   asvt-network:
