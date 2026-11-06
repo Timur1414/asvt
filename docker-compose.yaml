@@ -29,8 +29,8 @@ services:
     restart: unless-stopped
     ports:
       - "8554:8554" # RTSP
+      - "1935:1935" # RTMP
     expose:
-      - "1935" # RTMP
       - "8888" # HLS
       - "8889" # WebRTC
     # volumes:
