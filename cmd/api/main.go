@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -42,9 +43,42 @@ func main() {
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/detection", func(w http.ResponseWriter, r *http.Request) {
-		log.Info("Handle POST /api/detection")
-		type Request struct {
+		type BBox struct {
+			X      int `json:"x"`
+			Y      int `json:"y"`
+			Width  int `json:"width"`
+			Height int `json:"height"`
 		}
+		type Object struct {
+			ClassId    int     `json:"class_id"`
+			ClassName  string  `json:"class_name"`
+			Confidence float32 `json:"confidence"`
+			Bbox       BBox    `json:"bbox"`
+		}
+		type Request struct {
+			DeviceID    string   `json:"device_id"`
+			Timestamp   int64    `json:"timestamp"`
+			TimestampMs string   `json:"timestamp_ms"`
+			FrameId     int      `json:"frame_id"`
+			FrameWidth  int      `json:"frame_width"`
+			FrameHeight int      `json:"frame_height"`
+			Objects     []Object `json:"objects"`
+		}
+		var request Request
+		err := json.NewDecoder(r.Body).Decode(&request)
+		defer func() {
+			err = r.Body.Close()
+			if err != nil {
+				log.Error("failed to close request body", zap.Error(err))
+			}
+		}()
+		if err != nil {
+			log.Error("Error decoding request", zap.Error(err))
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		log.Info("Request received", zap.Any("request", request))
+		w.WriteHeader(http.StatusNoContent)
 	})
 
 	handler := middleware.CORSMiddleware(mux)
