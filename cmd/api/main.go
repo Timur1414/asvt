@@ -2,17 +2,14 @@ package main
 
 import (
 	"fmt"
-	"image"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/Timur1414/asvt/internal/api/delivery/middleware"
 	"github.com/Timur1414/asvt/pkg/logger"
-	"github.com/hybridgroup/mjpeg"
 	"go.uber.org/zap"
-	"gocv.io/x/gocv"
 )
-
-var stream *mjpeg.Stream
 
 func main() {
 	DEBUG := os.Getenv("DEBUG") == "true"
@@ -40,43 +37,33 @@ func main() {
 		}
 	}()
 
-	webcam, err := gocv.VideoCaptureFile(os.Getenv("CAMERA_STREAM_URL"))
-	if err != nil {
-		log.Fatal("Ошибка подключения к потоку", zap.Error(err))
-		return
-	}
-	defer webcam.Close()
-
-	net := gocv.ReadNet(os.Getenv("YOLO_MODEL_FILE"), "")
-	if net.Empty() {
-		log.Fatal("Ошибка загрузки модели")
-	}
-	defer net.Close()
-
-	stream = mjpeg.NewStream()
-	go http.Handle("/", stream)
-	go http.ListenAndServe("0.0.0.0:8080", nil)
-
-	img := gocv.NewMat()
-	defer img.Close()
-
-	log.Info("Сервер запущен на порту 8080")
-
-	for {
-		if ok := webcam.Read(&img); !ok || img.Empty() {
-			continue
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /api/detection", func(w http.ResponseWriter, r *http.Request) {
+		log.Info("Handle POST /api/detection")
+		type Request struct {
 		}
+	})
 
-		blob := gocv.BlobFromImage(img, 1/255.0, image.Pt(640, 640), gocv.NewScalar(0, 0, 0, 0), true, false)
-		net.SetInput(blob, "")
-		prob := net.Forward("")
+	handler := middleware.CORSMiddleware(mux)
+	handler = middleware.PanicMiddleware(handler)
+	handler = middleware.AccessLogMiddleware(handler)
 
-		blob.Close()
-		prob.Close()
-
-		// Конвертация в JPEG и отправка клиенту
-		buf, _ := gocv.IMEncode(gocv.JPEGFileExt, img)
-		stream.UpdateJPEG(buf.GetBytes())
-		buf.Close()
+	addr := ":" + os.Getenv("PORT")
+	server := http.Server{
+		Addr:         addr,
+		Handler:      handler,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 120 * time.Second,
+	}
+	log.Info("starting api server",
+		zap.String("addr", addr),
+	)
+	err = server.ListenAndServe()
+	if err != nil {
+		log.Error("Error starting server", zap.Error(err))
+		return
 	}
 }
