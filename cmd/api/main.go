@@ -57,8 +57,8 @@ func main() {
 		}
 		type Request struct {
 			DeviceID    string   `json:"device_id"`
-			Timestamp   int64    `json:"timestamp"`
-			TimestampMs string   `json:"timestamp_ms"`
+			Timestamp   int      `json:"timestamp"`
+			TimestampMs int      `json:"timestamp_ms"`
 			FrameId     int      `json:"frame_id"`
 			FrameWidth  int      `json:"frame_width"`
 			FrameHeight int      `json:"frame_height"`
