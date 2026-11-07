@@ -51,7 +51,7 @@ func main() {
 	handler = middleware.PanicMiddleware(handler)
 	handler = middleware.AccessLogMiddleware(handler)
 
-	addr := ":" + os.Getenv("PORT")
+	addr := ":8080"
 	server := http.Server{
 		Addr:         addr,
 		Handler:      handler,
