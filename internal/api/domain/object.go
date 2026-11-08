@@ -1,4 +1,4 @@
-package repository
+package domain
 
 import (
 	"math"
@@ -15,6 +15,7 @@ type DetectedObject struct {
 	Width      int       `json:"width"`
 	Height     int       `json:"height"`
 	CreatedAt  time.Time `json:"created_at"`
+	Noted      bool      `json:"noted"`
 }
 
 func CalculateIoU(box1, box2 DetectedObject) float64 {

@@ -2,15 +2,17 @@ package usecase
 
 import (
 	"context"
+	"time"
 
+	"github.com/Timur1414/asvt/internal/api/domain"
 	"github.com/Timur1414/asvt/internal/api/repository"
+	"github.com/Timur1414/asvt/pkg/logger"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type DetectUseCase interface {
-	MatchOrCreate(ctx context.Context, detectedObj repository.DetectedObject) error
-	// ToDo get nearest object (by Bbox)
-	// ToDo save new objects + create uuid
+	MatchOrCreate(ctx context.Context, detectedObj domain.DetectedObject) (domain.DetectedObject, error)
 }
 
 type Detect struct {
@@ -23,30 +25,58 @@ func NewDetect(detectRepo repository.DetectRepository) *Detect {
 	}
 }
 
-func (obj *Detect) MatchOrCreate(ctx context.Context, detectedObj repository.DetectedObject) error {
+func (obj *Detect) MatchOrCreate(ctx context.Context, detectedObj domain.DetectedObject) (domain.DetectedObject, error) {
+	log := logger.GetLoggerWithRequestId(ctx)
 	existingObjects, err := obj.detectRepository.GetAll(ctx)
 	if err != nil {
-		return err
+		return domain.DetectedObject{}, err
 	}
-	uuid, found := MatchOrCreate(detectedObj, existingObjects, 0.5)
+	res, found := FindObjectByIoU(detectedObj, existingObjects, 0.5)
 	if found {
-		return nil
+		log.Info("found object", zap.String("uuid", res.Uuid))
+		err = obj.detectRepository.Delete(ctx, res.Uuid)
+		if err != nil {
+			return domain.DetectedObject{}, err
+		}
+		err = obj.detectRepository.SaveNewObject(ctx, res)
+		if err != nil {
+			return domain.DetectedObject{}, err
+		}
+		return res, nil
 	}
+	log.Info("object not fount -> creating")
+	objUuid := uuid.New().String()
+	newObject := domain.DetectedObject{
+		Uuid:       objUuid,
+		ClassId:    detectedObj.ClassId,
+		ClassName:  detectedObj.ClassName,
+		Confidence: detectedObj.Confidence,
+		X:          detectedObj.X,
+		Y:          detectedObj.Y,
+		Width:      detectedObj.Width,
+		Height:     detectedObj.Height,
+		CreatedAt:  time.Now().UTC(),
+		Noted:      false,
+	}
+	err = obj.detectRepository.SaveNewObject(ctx, newObject)
+	if err != nil {
+		return domain.DetectedObject{}, err
+	}
+	return newObject, nil
 }
 
-func MatchOrCreate(incoming repository.DetectedObject, existingObjects []repository.DetectedObject, iouThreshold float64) (string, bool) {
-	var bestUUID string
+func FindObjectByIoU(incoming domain.DetectedObject, existingObjects []domain.DetectedObject, iouThreshold float64) (domain.DetectedObject, bool) {
+	var res domain.DetectedObject
 	maxIoU := 0.0
 	for _, obj := range existingObjects {
-		iou := repository.CalculateIoU(incoming, obj)
+		iou := domain.CalculateIoU(incoming, obj)
 		if iou > maxIoU {
 			maxIoU = iou
-			bestUUID = obj.Uuid
+			res = obj
 		}
 	}
-	// Если IoU выше порога (например, 0.4 - 0.5), считаем, что это тот же объект
 	if maxIoU >= iouThreshold {
-		return bestUUID, true
+		return res, true
 	}
-	return "", false
+	return domain.DetectedObject{}, false
 }
