@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/Timur1414/asvt/pkg/logger"
+	"github.com/Timur1414/asvt/pkg/web_helpers"
 	"go.uber.org/zap"
 )
 
@@ -31,5 +32,10 @@ func (obj *Detection) Detect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Info("DetectRequest received", zap.Any("request", request))
-	w.WriteHeader(http.StatusNoContent)
+	// ToDo get objects - check in memory - create ids
+	// ToDo new people - create event
+	// ToDo small TTL in redis
+	// ToDo people is ge 15 s - SMTP
+	response := web_helpers.NewOkResponse()
+	web_helpers.WriteResponseJSON(w, response.Code, response)
 }
