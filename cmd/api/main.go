@@ -76,6 +76,7 @@ func main() {
 	detectRepo := repository.NewDetectRedis(redisClient)
 	log.Info("Repository initialized")
 	detectUsecase := usecase.NewDetect(detectRepo)
+	log.Info("Usecase initialized")
 	detection := delivery.NewDetection(detectUsecase)
 	log.Info("Handler initialized")
 
