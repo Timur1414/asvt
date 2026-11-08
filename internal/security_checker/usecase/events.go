@@ -11,6 +11,8 @@ import (
 
 type EventsUseCase interface {
 	GetSuspiciousObjects(ctx context.Context) ([]domain.DetectedObject, error)
+	NoteObject(ctx context.Context, detectedObject domain.DetectedObject) error
+	NoteObjects(ctx context.Context, detectedObjects []domain.DetectedObject) error
 }
 
 type Events struct {
@@ -33,4 +35,24 @@ func (obj *Events) GetSuspiciousObjects(ctx context.Context) ([]domain.DetectedO
 		return duration < time.Second*15
 	})
 	return objects, nil
+}
+
+func (obj *Events) NoteObject(ctx context.Context, detectedObject domain.DetectedObject) error {
+	err := obj.eventsRepository.Delete(ctx, detectedObject.Uuid)
+	if err != nil {
+		return err
+	}
+	detectedObject.Noted = true
+	err = obj.eventsRepository.SaveNewObject(ctx, detectedObject)
+	return err
+}
+
+func (obj *Events) NoteObjects(ctx context.Context, detectedObjects []domain.DetectedObject) error {
+	for _, detectedObject := range detectedObjects {
+		err := obj.NoteObject(ctx, detectedObject)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

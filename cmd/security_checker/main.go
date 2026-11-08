@@ -84,6 +84,12 @@ func main() {
 			time.Sleep(interval)
 			continue
 		}
+		err = eventsUsecase.NoteObjects(checkCtx, suspiciousObjects)
+		if err != nil {
+			log.Error("Failed to note suspicious objects", zap.Error(err))
+			time.Sleep(interval)
+			continue
+		}
 		// ToDo deliver suspiciousObjects
 		select {
 		case <-checkCtx.Done():

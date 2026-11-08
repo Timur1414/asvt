@@ -15,6 +15,8 @@ import (
 type EventsRepository interface {
 	GetAll(ctx context.Context) ([]domain.DetectedObject, error)
 	GetNotNoted(ctx context.Context) ([]domain.DetectedObject, error)
+	SaveNewObject(ctx context.Context, detectedObj domain.DetectedObject) error
+	Delete(ctx context.Context, uuid string) error
 }
 
 const (
@@ -69,4 +71,33 @@ func (obj *EventsRedis) GetNotNoted(ctx context.Context) ([]domain.DetectedObjec
 	})
 	log.Info("deleted noted objects")
 	return objects, nil
+}
+
+func (obj *EventsRedis) SaveNewObject(ctx context.Context, detectedObj domain.DetectedObject) error {
+	log := logger.GetLoggerWithRequestId(ctx)
+	key := detectedObjectPrefix + detectedObj.Uuid
+	data, err := json.Marshal(detectedObj)
+	if err != nil {
+		log.Error("fail to marshal detected object", zap.Error(err))
+		return err
+	}
+	err = obj.db.Set(ctx, key, data, detectedObjectTTL).Err()
+	if err != nil {
+		log.Error("failed to save detected object", zap.String("uuid", detectedObj.Uuid), zap.Error(err))
+		return err
+	}
+	log.Info("saved detected object", zap.String("uuid", detectedObj.Uuid))
+	return nil
+}
+
+func (obj *EventsRedis) Delete(ctx context.Context, uuid string) error {
+	log := logger.GetLoggerWithRequestId(ctx)
+	key := detectedObjectPrefix + uuid
+	err := obj.db.Del(ctx, key).Err()
+	if err != nil {
+		log.Error("failed to delete detected object", zap.String("uuid", uuid), zap.Error(err))
+		return err
+	}
+	log.Info("deleted detected object", zap.String("uuid", uuid))
+	return nil
 }
