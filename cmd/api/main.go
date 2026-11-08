@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"time"
 
+	delivery "github.com/Timur1414/asvt/internal/api/delivery/http"
 	"github.com/Timur1414/asvt/internal/api/delivery/middleware"
 	"github.com/Timur1414/asvt/pkg/cache"
 	"github.com/Timur1414/asvt/pkg/database"
@@ -71,48 +71,14 @@ func main() {
 	}()
 	log.Info("Connected to Redis")
 
+	detection := delivery.NewDetection()
+	log.Info("Handler initialized")
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mux.HandleFunc("POST /api/detection", func(w http.ResponseWriter, r *http.Request) {
-		type BBox struct {
-			X      int `json:"x"`
-			Y      int `json:"y"`
-			Width  int `json:"width"`
-			Height int `json:"height"`
-		}
-		type Object struct {
-			ClassId    int     `json:"class_id"`
-			ClassName  string  `json:"class_name"`
-			Confidence float32 `json:"confidence"`
-			Bbox       BBox    `json:"bbox"`
-		}
-		type Request struct {
-			DeviceID    string   `json:"device_id"`
-			Timestamp   int      `json:"timestamp"`
-			TimestampMs int      `json:"timestamp_ms"`
-			FrameId     int      `json:"frame_id"`
-			FrameWidth  int      `json:"frame_width"`
-			FrameHeight int      `json:"frame_height"`
-			Objects     []Object `json:"objects"`
-		}
-		var request Request
-		err := json.NewDecoder(r.Body).Decode(&request)
-		defer func() {
-			err = r.Body.Close()
-			if err != nil {
-				log.Error("failed to close request body", zap.Error(err))
-			}
-		}()
-		if err != nil {
-			log.Error("Error decoding request", zap.Error(err))
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		log.Info("Request received", zap.Any("request", request))
-		w.WriteHeader(http.StatusNoContent)
-	})
+	mux.HandleFunc("POST /api/detection", detection.Detect)
 
 	handler := middleware.CORSMiddleware(mux)
 	handler = middleware.PanicMiddleware(handler)
