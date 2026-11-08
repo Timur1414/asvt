@@ -9,6 +9,8 @@ import (
 
 	delivery "github.com/Timur1414/asvt/internal/api/delivery/http"
 	"github.com/Timur1414/asvt/internal/api/delivery/middleware"
+	"github.com/Timur1414/asvt/internal/api/repository"
+	"github.com/Timur1414/asvt/internal/api/usecase"
 	"github.com/Timur1414/asvt/pkg/cache"
 	"github.com/Timur1414/asvt/pkg/database"
 	"github.com/Timur1414/asvt/pkg/logger"
@@ -71,7 +73,10 @@ func main() {
 	}()
 	log.Info("Connected to Redis")
 
-	detection := delivery.NewDetection()
+	detectRepo := repository.NewDetectRedis(redisClient)
+	log.Info("Repository initialized")
+	detectUsecase := usecase.NewDetect(detectRepo)
+	detection := delivery.NewDetection(detectUsecase)
 	log.Info("Handler initialized")
 
 	mux := http.NewServeMux()

@@ -4,16 +4,20 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Timur1414/asvt/internal/api/usecase"
 	"github.com/Timur1414/asvt/pkg/logger"
 	"github.com/Timur1414/asvt/pkg/web_helpers"
 	"go.uber.org/zap"
 )
 
 type Detection struct {
+	detectUsecase usecase.DetectUseCase
 }
 
-func NewDetection() *Detection {
-	return &Detection{}
+func NewDetection(detectUC usecase.DetectUseCase) *Detection {
+	return &Detection{
+		detectUsecase: detectUC,
+	}
 }
 
 func (obj *Detection) Detect(w http.ResponseWriter, r *http.Request) {
