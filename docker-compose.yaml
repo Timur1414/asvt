@@ -65,6 +65,25 @@ services:
     networks:
       - asvt-network
 
+  security_checker:
+    build:
+      context: .
+      dockerfile: deployment/docker/Dockerfile_security_checker
+    container_name: security_checker
+    restart: always
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./log:/app/log
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - asvt-network
+
 #  mediamtx:
 #    image: bluenviron/mediamtx:latest
 #    container_name: mediamtx
