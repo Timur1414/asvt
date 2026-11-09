@@ -57,9 +57,7 @@ services:
       - asvt-network
 
   api:
-    build:
-      context: .
-      dockerfile: deployment/docker/Dockerfile_api
+    image: timur1414/asvt-api:latest
     container_name: api
     restart: always
     read_only: true
@@ -71,6 +69,11 @@ services:
       - ./log:/app/log
     env_file:
       - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - migrations
       - redis
@@ -84,9 +87,7 @@ services:
       - asvt-network
 
   security_checker:
-    build:
-      context: .
-      dockerfile: deployment/docker/Dockerfile_security_checker
+    image: timur1414/asvt-security-checker:latest
     container_name: security_checker
     restart: always
     read_only: true
@@ -96,6 +97,11 @@ services:
       - ./log:/app/log
     env_file:
       - .env
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - redis
       - migrations
