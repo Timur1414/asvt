@@ -70,9 +70,10 @@ func main() {
 	}()
 	log.Info("Connected to Redis")
 
-	eventsRepo := repository.NewEventsRedis(redisClient)
+	objectsRepo := repository.NewObjectsRedis(redisClient)
+	eventsRepo := repository.NewEventsPostgres(dbPool)
 	log.Info("Repository initialized")
-	eventsUsecase := usecase.NewEvents(eventsRepo)
+	eventsUsecase := usecase.NewEvents(objectsRepo, eventsRepo)
 	log.Info("Usecase initialized")
 
 	interval := time.Second * 30
@@ -87,6 +88,12 @@ func main() {
 		err = eventsUsecase.NoteObjects(checkCtx, suspiciousObjects)
 		if err != nil {
 			log.Error("Failed to note suspicious objects", zap.Error(err))
+			time.Sleep(interval)
+			continue
+		}
+		err = eventsUsecase.SaveObjects(checkCtx, suspiciousObjects)
+		if err != nil {
+			log.Error("Failed to save suspicious objects", zap.Error(err))
 			time.Sleep(interval)
 			continue
 		}

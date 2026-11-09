@@ -8,15 +8,20 @@ import (
 
 	"github.com/Timur1414/asvt/internal/security_checker/domain"
 	"github.com/Timur1414/asvt/pkg/logger"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
-type EventsRepository interface {
+type ObjectsRepository interface {
 	GetAll(ctx context.Context) ([]domain.DetectedObject, error)
 	GetNotNoted(ctx context.Context) ([]domain.DetectedObject, error)
 	SaveNewObject(ctx context.Context, detectedObj domain.DetectedObject) error
 	Delete(ctx context.Context, uuid string) error
+}
+
+type EventsRepository interface {
+	Save(ctx context.Context, event domain.SecurityEvent) error
 }
 
 const (
@@ -24,17 +29,17 @@ const (
 	detectedObjectTTL    = time.Second * 3
 )
 
-type EventsRedis struct {
+type ObjectsRedis struct {
 	db *redis.Client
 }
 
-func NewEventsRedis(client *redis.Client) *EventsRedis {
-	return &EventsRedis{
+func NewObjectsRedis(client *redis.Client) *ObjectsRedis {
+	return &ObjectsRedis{
 		db: client,
 	}
 }
 
-func (obj *EventsRedis) GetAll(ctx context.Context) ([]domain.DetectedObject, error) {
+func (obj *ObjectsRedis) GetAll(ctx context.Context) ([]domain.DetectedObject, error) {
 	log := logger.GetLogger()
 	res := make([]domain.DetectedObject, 0)
 	iter := obj.db.Scan(ctx, 0, detectedObjectPrefix, 0).Iterator()
@@ -60,7 +65,7 @@ func (obj *EventsRedis) GetAll(ctx context.Context) ([]domain.DetectedObject, er
 	return res, nil
 }
 
-func (obj *EventsRedis) GetNotNoted(ctx context.Context) ([]domain.DetectedObject, error) {
+func (obj *ObjectsRedis) GetNotNoted(ctx context.Context) ([]domain.DetectedObject, error) {
 	log := logger.GetLogger()
 	objects, err := obj.GetAll(ctx)
 	if err != nil {
@@ -73,7 +78,7 @@ func (obj *EventsRedis) GetNotNoted(ctx context.Context) ([]domain.DetectedObjec
 	return objects, nil
 }
 
-func (obj *EventsRedis) SaveNewObject(ctx context.Context, detectedObj domain.DetectedObject) error {
+func (obj *ObjectsRedis) SaveNewObject(ctx context.Context, detectedObj domain.DetectedObject) error {
 	log := logger.GetLoggerWithRequestId(ctx)
 	key := detectedObjectPrefix + detectedObj.Uuid
 	data, err := json.Marshal(detectedObj)
@@ -90,7 +95,7 @@ func (obj *EventsRedis) SaveNewObject(ctx context.Context, detectedObj domain.De
 	return nil
 }
 
-func (obj *EventsRedis) Delete(ctx context.Context, uuid string) error {
+func (obj *ObjectsRedis) Delete(ctx context.Context, uuid string) error {
 	log := logger.GetLoggerWithRequestId(ctx)
 	key := detectedObjectPrefix + uuid
 	err := obj.db.Del(ctx, key).Err()
@@ -99,5 +104,31 @@ func (obj *EventsRedis) Delete(ctx context.Context, uuid string) error {
 		return err
 	}
 	log.Info("deleted detected object", zap.String("uuid", uuid))
+	return nil
+}
+
+type EventsPostgres struct {
+	db *pgxpool.Pool
+}
+
+func NewEventsPostgres(db *pgxpool.Pool) *EventsPostgres {
+	return &EventsPostgres{
+		db: db,
+	}
+}
+
+func (obj *EventsPostgres) Save(ctx context.Context, event domain.SecurityEvent) error {
+	log := logger.GetLogger()
+	query := `insert into security_event(object_uuid, object_type, object_confidence, created_at) values ($1, $2, $3, $4);`
+	args := []any{event.ObjectUuid, event.ObjectType, event.ObjectConfidence, event.CreatedAt}
+	start := time.Now()
+	_, err := obj.db.Exec(ctx, query, args...)
+	if err != nil {
+		log.Error("failed to save security event", zap.Error(err))
+		return err
+	}
+	duration := time.Since(start)
+	log = logger.ModifyLoggerWithDBQuery(log, query, args, duration)
+	log.Info("Query executed")
 	return nil
 }

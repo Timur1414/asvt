@@ -13,20 +13,24 @@ type EventsUseCase interface {
 	GetSuspiciousObjects(ctx context.Context) ([]domain.DetectedObject, error)
 	NoteObject(ctx context.Context, detectedObject domain.DetectedObject) error
 	NoteObjects(ctx context.Context, detectedObjects []domain.DetectedObject) error
+	SaveNewEvent(ctx context.Context, object domain.DetectedObject) error
+	SaveObjects(ctx context.Context, objects []domain.DetectedObject) error
 }
 
 type Events struct {
-	eventsRepository repository.EventsRepository
+	objectsRepository repository.ObjectsRepository
+	eventsRepository  repository.EventsRepository
 }
 
-func NewEvents(eventsRepo repository.EventsRepository) *Events {
+func NewEvents(objectsRepo repository.ObjectsRepository, eventsRepo repository.EventsRepository) *Events {
 	return &Events{
-		eventsRepository: eventsRepo,
+		objectsRepository: objectsRepo,
+		eventsRepository:  eventsRepo,
 	}
 }
 
 func (obj *Events) GetSuspiciousObjects(ctx context.Context) ([]domain.DetectedObject, error) {
-	objects, err := obj.eventsRepository.GetNotNoted(ctx)
+	objects, err := obj.objectsRepository.GetNotNoted(ctx)
 	if err != nil {
 		return []domain.DetectedObject{}, err
 	}
@@ -38,18 +42,38 @@ func (obj *Events) GetSuspiciousObjects(ctx context.Context) ([]domain.DetectedO
 }
 
 func (obj *Events) NoteObject(ctx context.Context, detectedObject domain.DetectedObject) error {
-	err := obj.eventsRepository.Delete(ctx, detectedObject.Uuid)
+	err := obj.objectsRepository.Delete(ctx, detectedObject.Uuid)
 	if err != nil {
 		return err
 	}
 	detectedObject.Noted = true
-	err = obj.eventsRepository.SaveNewObject(ctx, detectedObject)
+	err = obj.objectsRepository.SaveNewObject(ctx, detectedObject)
 	return err
 }
 
 func (obj *Events) NoteObjects(ctx context.Context, detectedObjects []domain.DetectedObject) error {
 	for _, detectedObject := range detectedObjects {
 		err := obj.NoteObject(ctx, detectedObject)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (obj *Events) SaveNewEvent(ctx context.Context, object domain.DetectedObject) error {
+	event := domain.SecurityEvent{
+		ObjectUuid:       object.Uuid,
+		ObjectType:       object.ClassName,
+		ObjectConfidence: object.Confidence,
+		CreatedAt:        time.Now().UTC(),
+	}
+	return obj.eventsRepository.Save(ctx, event)
+}
+
+func (obj *Events) SaveObjects(ctx context.Context, objects []domain.DetectedObject) error {
+	for _, object := range objects {
+		err := obj.SaveNewEvent(ctx, object)
 		if err != nil {
 			return err
 		}
