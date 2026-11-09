@@ -20,7 +20,7 @@ type DetectRepository interface {
 
 const (
 	detectedObjectPrefix = "obj:"
-	detectedObjectTTL    = time.Second * 3
+	detectedObjectTTL    = time.Second * 5
 )
 
 type DetectRedis struct {
@@ -51,11 +51,7 @@ func (obj *DetectRedis) SaveNewObject(ctx context.Context, detectedObj domain.De
 func (obj *DetectRedis) GetAll(ctx context.Context) ([]domain.DetectedObject, error) {
 	log := logger.GetLoggerWithRequestId(ctx)
 	res := make([]domain.DetectedObject, 0)
-	iter := obj.db.Scan(ctx, 0, detectedObjectPrefix, 0).Iterator()
-	if iter.Err() != nil {
-		log.Error("fail to iterate detected objects", zap.String("uuid", iter.Val()))
-		return []domain.DetectedObject{}, iter.Err()
-	}
+	iter := obj.db.Scan(ctx, 0, detectedObjectPrefix+"*", 0).Iterator()
 	for iter.Next(ctx) {
 		key := iter.Val()
 		data, err := obj.db.Get(ctx, key).Bytes()
@@ -70,6 +66,10 @@ func (obj *DetectRedis) GetAll(ctx context.Context) ([]domain.DetectedObject, er
 			return []domain.DetectedObject{}, err
 		}
 		res = append(res, detectedObj)
+	}
+	if iter.Err() != nil {
+		log.Error("fail to iterate detected objects", zap.String("uuid", iter.Val()))
+		return []domain.DetectedObject{}, iter.Err()
 	}
 	return res, nil
 }

@@ -28,6 +28,7 @@ func NewDetect(detectRepo repository.DetectRepository) *Detect {
 func (obj *Detect) MatchOrCreate(ctx context.Context, detectedObj domain.DetectedObject) (domain.DetectedObject, error) {
 	log := logger.GetLoggerWithRequestId(ctx)
 	existingObjects, err := obj.detectRepository.GetAll(ctx)
+	log.Info("Get existing objects", zap.Any("objects", existingObjects))
 	if err != nil {
 		return domain.DetectedObject{}, err
 	}
@@ -62,14 +63,17 @@ func (obj *Detect) MatchOrCreate(ctx context.Context, detectedObj domain.Detecte
 	if err != nil {
 		return domain.DetectedObject{}, err
 	}
+	log.Info("object created", zap.String("uuid", objUuid))
 	return newObject, nil
 }
 
 func FindObjectByIoU(incoming domain.DetectedObject, existingObjects []domain.DetectedObject, iouThreshold float64) (domain.DetectedObject, bool) {
+	log := logger.GetLogger()
 	var res domain.DetectedObject
 	maxIoU := 0.0
 	for _, obj := range existingObjects {
 		iou := domain.CalculateIoU(incoming, obj)
+		log.Info("Calculated IoU", zap.Float64("IoU", iou))
 		if iou > maxIoU {
 			maxIoU = iou
 			res = obj
