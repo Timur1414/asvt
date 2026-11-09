@@ -7,7 +7,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -p 5432" ]
       interval: 5s
@@ -35,6 +34,25 @@ services:
       - "6379"
     volumes:
       - redis_data:/data
+    networks:
+      - asvt-network
+
+  migrations:
+    image: ghcr.io/jackc/tern:latest
+    container_name: postgres-migrations
+    volumes:
+      - ./migrations:/migrations
+    working_dir: /migrations
+    command: migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     networks:
       - asvt-network
 
@@ -98,6 +116,10 @@ services:
 #    #   - ./mediamtx.yml:/mediamtx.yml
 #    networks:
 #      - asvt-network
+
+volumes:
+  postgres_data:
+  redis_data:
 
 networks:
   asvt-network:

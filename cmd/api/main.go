@@ -74,17 +74,21 @@ func main() {
 	log.Info("Connected to Redis")
 
 	detectRepo := repository.NewDetectRedis(redisClient)
+	historyRepo := repository.NewHistoryPostgres(dbPool)
 	log.Info("Repository initialized")
 	detectUsecase := usecase.NewDetect(detectRepo)
+	historyUsecase := usecase.NewHistory(historyRepo)
 	log.Info("Usecase initialized")
-	detection := delivery.NewDetection(detectUsecase)
+	detectionHandler := delivery.NewDetection(detectUsecase)
+	historyHandler := delivery.NewHistoryHandler(historyUsecase)
 	log.Info("Handler initialized")
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	mux.HandleFunc("POST /api/detection", detection.Detect)
+	mux.HandleFunc("POST /api/detection", detectionHandler.Detect)
+	mux.HandleFunc("GET /api/history", historyHandler.GetAll)
 
 	handler := middleware.CORSMiddleware(mux)
 	handler = middleware.PanicMiddleware(handler)
