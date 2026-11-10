@@ -6,6 +6,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/Timur1414/asvt/internal/security_checker/delivery/smtp"
 	"github.com/Timur1414/asvt/internal/security_checker/repository"
 	"github.com/Timur1414/asvt/internal/security_checker/usecase"
 	"github.com/Timur1414/asvt/pkg/cache"
@@ -75,6 +76,8 @@ func main() {
 	log.Info("Repository initialized")
 	eventsUsecase := usecase.NewEvents(objectsRepo, eventsRepo)
 	log.Info("Usecase initialized")
+	handler := smtp.NewEventsNotifier()
+	log.Info("Delivery initialized")
 
 	interval := time.Second * 30
 	checkCtx := context.Background()
@@ -97,7 +100,7 @@ func main() {
 			time.Sleep(interval)
 			continue
 		}
-		// ToDo deliver suspiciousObjects
+		handler.Notify()
 		select {
 		case <-checkCtx.Done():
 			log.Info("Context cancelled, terminating aggregator service")
