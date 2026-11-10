@@ -49,7 +49,7 @@ func (obj *EventsNotifier) Notify() {
 		return
 	}
 	defer client.Close()
-	if err = client.Send(m); err != nil {
+	if err = client.DialAndSend(m); err != nil {
 		log.Fatal("failed to send email", zap.Error(err))
 		return
 	}
