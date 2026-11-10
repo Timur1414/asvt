@@ -100,7 +100,9 @@ func main() {
 			time.Sleep(interval)
 			continue
 		}
-		handler.Notify()
+		if len(suspiciousObjects) > 0 {
+			handler.Notify(suspiciousObjects)
+		}
 		select {
 		case <-checkCtx.Done():
 			log.Info("Context cancelled, terminating aggregator service")
