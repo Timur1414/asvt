@@ -49,13 +49,8 @@ func (obj *Detection) Detect(w http.ResponseWriter, r *http.Request) {
 			Width:      detectedObj.Bbox.Width,
 			Height:     detectedObj.Bbox.Height,
 			CreatedAt:  time.Time{},
-			Noted:      false,
 		})
 	}
-	// ToDo get objects - check in memory - create ids
-	// ToDo new people - create event
-	// ToDo small TTL in redis
-	// ToDo people is ge 15 s - SMTP
 	response := web_helpers.NewOkResponse()
 	web_helpers.WriteResponseJSON(w, response.Code, response)
 }

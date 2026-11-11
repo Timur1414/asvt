@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"encoding/json"
-	"slices"
 	"time"
 
 	"github.com/Timur1414/asvt/internal/security_checker/domain"
@@ -15,7 +14,6 @@ import (
 
 type ObjectsRepository interface {
 	GetAll(ctx context.Context) ([]domain.DetectedObject, error)
-	GetNotNoted(ctx context.Context) ([]domain.DetectedObject, error)
 	SaveNewObject(ctx context.Context, detectedObj domain.DetectedObject) error
 	Delete(ctx context.Context, uuid string) error
 }
@@ -63,19 +61,6 @@ func (obj *ObjectsRedis) GetAll(ctx context.Context) ([]domain.DetectedObject, e
 		return []domain.DetectedObject{}, iter.Err()
 	}
 	return res, nil
-}
-
-func (obj *ObjectsRedis) GetNotNoted(ctx context.Context) ([]domain.DetectedObject, error) {
-	log := logger.GetLogger()
-	objects, err := obj.GetAll(ctx)
-	if err != nil {
-		return []domain.DetectedObject{}, err
-	}
-	objects = slices.DeleteFunc(objects, func(item domain.DetectedObject) bool {
-		return item.Noted
-	})
-	log.Info("deleted noted objects")
-	return objects, nil
 }
 
 func (obj *ObjectsRedis) SaveNewObject(ctx context.Context, detectedObj domain.DetectedObject) error {

@@ -7,8 +7,6 @@ import (
 )
 
 type EventResponse struct {
-	//Id int `json:"id"`
-	//ObjectId int `json:"object_id"`
 	ObjectType       string    `json:"object_type"`
 	ObjectConfidence float32   `json:"object_confidence"`
 	CreatedAt        time.Time `json:"created_at"`

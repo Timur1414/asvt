@@ -13,6 +13,7 @@ type EventsUseCase interface {
 	GetSuspiciousObjects(ctx context.Context) ([]domain.DetectedObject, error)
 	NoteObject(ctx context.Context, detectedObject domain.DetectedObject) error
 	NoteObjects(ctx context.Context, detectedObjects []domain.DetectedObject) error
+	GetPostRollObjects(ctx context.Context, detectedObjects []domain.DetectedObject) ([]domain.DetectedObject, time.Time, time.Time, error)
 	SaveNewEvent(ctx context.Context, object domain.DetectedObject) error
 	SaveObjects(ctx context.Context, objects []domain.DetectedObject) error
 }
@@ -30,23 +31,28 @@ func NewEvents(objectsRepo repository.ObjectsRepository, eventsRepo repository.E
 }
 
 func (obj *Events) GetSuspiciousObjects(ctx context.Context) ([]domain.DetectedObject, error) {
-	objects, err := obj.objectsRepository.GetNotNoted(ctx)
+	objects, err := obj.objectsRepository.GetAll(ctx)
 	if err != nil {
 		return []domain.DetectedObject{}, err
 	}
 	objects = slices.DeleteFunc(objects, func(item domain.DetectedObject) bool {
-		duration := time.Since(item.CreatedAt)
-		return duration < time.Second*15
+		return !(item.Status == domain.StatusSuspicious || item.Status == domain.StatusWaitingPostRoll)
 	})
 	return objects, nil
 }
 
 func (obj *Events) NoteObject(ctx context.Context, detectedObject domain.DetectedObject) error {
+	if detectedObject.Status != domain.StatusSuspicious {
+		return nil
+	}
+	if time.Since(detectedObject.LastSeenAt) <= 2*time.Second {
+		return nil
+	}
 	err := obj.objectsRepository.Delete(ctx, detectedObject.Uuid)
 	if err != nil {
 		return err
 	}
-	detectedObject.Noted = true
+	detectedObject.Status = domain.StatusWaitingPostRoll
 	err = obj.objectsRepository.SaveNewObject(ctx, detectedObject)
 	return err
 }
@@ -59,6 +65,37 @@ func (obj *Events) NoteObjects(ctx context.Context, detectedObjects []domain.Det
 		}
 	}
 	return nil
+}
+
+func (obj *Events) GetPostRollObjects(ctx context.Context, detectedObjects []domain.DetectedObject) ([]domain.DetectedObject, time.Time, time.Time, error) {
+	res := make([]domain.DetectedObject, 0)
+	var startFragmentTime time.Time
+	var endFragmentTime time.Time
+	for _, detectedObject := range detectedObjects {
+		if detectedObject.Status == domain.StatusWaitingPostRoll && time.Since(detectedObject.LastSeenAt) >= 3*time.Second {
+			detectedObject.Status = domain.StatusCompleted
+			res = append(res, detectedObject)
+			if startFragmentTime.IsZero() || detectedObject.CreatedAt.Before(startFragmentTime) {
+				startFragmentTime = detectedObject.CreatedAt
+			}
+			if endFragmentTime.IsZero() || detectedObject.LastSeenAt.After(endFragmentTime) {
+				endFragmentTime = detectedObject.LastSeenAt
+			}
+			err := obj.objectsRepository.Delete(ctx, detectedObject.Uuid)
+			if err != nil {
+				return res, startFragmentTime, endFragmentTime, err
+			}
+			err = obj.objectsRepository.SaveNewObject(ctx, detectedObject)
+			if err != nil {
+				return res, startFragmentTime, endFragmentTime, err
+			}
+		}
+	}
+	if len(res) == 0 {
+		return res, startFragmentTime, endFragmentTime, nil
+	}
+	startFragmentTime = startFragmentTime.Add(-3 * time.Second)
+	return res, startFragmentTime, endFragmentTime, nil
 }
 
 func (obj *Events) SaveNewEvent(ctx context.Context, object domain.DetectedObject) error {

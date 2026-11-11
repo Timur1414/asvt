@@ -79,7 +79,7 @@ func main() {
 	handler := smtp.NewEventsNotifier()
 	log.Info("Delivery initialized")
 
-	interval := time.Second * 30
+	interval := time.Second
 	checkCtx := context.Background()
 	for {
 		suspiciousObjects, err := eventsUsecase.GetSuspiciousObjects(checkCtx)
@@ -100,8 +100,14 @@ func main() {
 			time.Sleep(interval)
 			continue
 		}
-		if len(suspiciousObjects) > 0 {
-			handler.Notify(suspiciousObjects)
+		succeededObjects, startFragmentTime, endFragmentTime, err := eventsUsecase.GetPostRollObjects(checkCtx, suspiciousObjects)
+		if err != nil {
+			log.Error("Failed to get post roll objects", zap.Error(err))
+			time.Sleep(interval)
+			continue
+		}
+		if len(succeededObjects) > 0 {
+			handler.Notify(succeededObjects, startFragmentTime, endFragmentTime)
 		}
 		select {
 		case <-checkCtx.Done():

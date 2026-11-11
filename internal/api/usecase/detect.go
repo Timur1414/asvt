@@ -39,6 +39,14 @@ func (obj *Detect) MatchOrCreate(ctx context.Context, detectedObj domain.Detecte
 		if err != nil {
 			return domain.DetectedObject{}, err
 		}
+		res.LastSeenAt = time.Now().UTC()
+		res.X = detectedObj.X
+		res.Y = detectedObj.Y
+		res.Width = detectedObj.Width
+		res.Height = detectedObj.Height
+		if time.Since(res.CreatedAt) >= 15*time.Second && res.Status == domain.StatusTracking {
+			res.Status = domain.StatusSuspicious
+		}
 		err = obj.detectRepository.SaveNewObject(ctx, res)
 		if err != nil {
 			return domain.DetectedObject{}, err
@@ -57,7 +65,8 @@ func (obj *Detect) MatchOrCreate(ctx context.Context, detectedObj domain.Detecte
 		Width:      detectedObj.Width,
 		Height:     detectedObj.Height,
 		CreatedAt:  time.Now().UTC(),
-		Noted:      false,
+		LastSeenAt: time.Now().UTC(),
+		Status:     domain.StatusTracking,
 	}
 	err = obj.detectRepository.SaveNewObject(ctx, newObject)
 	if err != nil {

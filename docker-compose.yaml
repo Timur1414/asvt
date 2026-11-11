@@ -94,6 +94,7 @@ services:
     security_opt:
       - no-new-privileges:true
     volumes:
+      - video_buffer:/app/buffer
       - ./log:/app/log
     env_file:
       - .env
@@ -126,6 +127,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  video_buffer:
 
 networks:
   asvt-network:

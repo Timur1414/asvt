@@ -22,7 +22,7 @@ func NewEventsNotifier() *EventsNotifier {
 	return &EventsNotifier{}
 }
 
-func (obj *EventsNotifier) Notify(objects []domain.DetectedObject) {
+func (obj *EventsNotifier) Notify(objects []domain.DetectedObject, startFragmentTime time.Time, endFragmentTime time.Time) {
 	log := logger.GetLogger()
 	m := mail.NewMsg()
 	if err := m.From(os.Getenv("MAIL_FROM")); err != nil {
@@ -40,15 +40,13 @@ func (obj *EventsNotifier) Notify(objects []domain.DetectedObject) {
 		htmlText += "<p>" + object.ClassName + " с вероятностью " + strconv.FormatFloat(float64(object.Confidence), 'f', 3, 64) + " находится в поле зрения более 15 секунд</p>"
 	}
 	rtspURL := os.Getenv("CAMERA_STREAM_URL")
-	frameBytes, err := captureFrame(rtspURL)
+	frameBytes, err := generateVideoClip(startFragmentTime, endFragmentTime)
 	if err != nil {
 		log.Error("failed to capture frame", zap.Error(err))
 	} else {
-		if err := m.EmbedReader("snapshot.jpg", bytes.NewReader(frameBytes)); err != nil {
-			log.Error("failed to embed snapshot into email", zap.Error(err))
-		} else {
-			htmlText += `<p><img src="cid:snapshot.jpg" alt="Кадр с камеры" style="max-width: 100%; height: auto;"/></p>`
-		}
+		videoPath := "/tmp/alert.mp4"
+		defer os.Remove(videoPath)
+		m.AttachFile(videoPath, mail.WithFileName("event_record.mp4"))
 	}
 	m.SetBodyString(mail.TypeTextPlain, plainText)
 	m.AddAlternativeString(mail.TypeTextHTML, htmlText)
@@ -71,18 +69,11 @@ func (obj *EventsNotifier) Notify(objects []domain.DetectedObject) {
 	log.Info("email sent")
 }
 
-func captureFrame(rtspURL string) ([]byte, error) {
+func generateVideoClip(startTime, endTime time.Time) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	var stdout, stderr bytes.Buffer
-	// ffmpeg аргументы:
-	// -rtsp_transport tcp : стабильная передача через TCP
-	// -i <url>            : адрес RTSP-потока в MediaMTX
-	// -vframes 1          : захватить ровно 1 кадр
-	// -f image2pipe       : передача изображения в пайп
-	// -vcodec mjpeg       : кодирование в JPEG
-	// pipe:1              : вывод в stdout
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-rtsp_transport", "tcp",
 		"-i", rtspURL,
