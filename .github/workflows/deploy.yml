@@ -1,0 +1,97 @@
+name: Build, Push and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: vars
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build & Push API Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/docker/Dockerfile_api
+          push: true
+          tags: |
+            timur1414/asvt-api:latest
+            timur1414/asvt-api:${{ github.sha }}
+            timur1414/asvt-api:${{ steps.vars.outputs.sha_short }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Security Checker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deployment/docker/Dockerfile_security_checker
+          push: true
+          tags: |
+            timur1414/asvt-security-checker:latest
+            timur1414/asvt-security-checker:${{ github.sha }}
+            timur1414/asvt-security-checker:${{ steps.vars.outputs.sha_short }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy & Run Migrations via SSH
+    needs: build-and-push
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy and apply migrations via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            echo "=== [1/4] Navigating to project directory ==="
+            cd "${{ secrets.WORK_DIR || '.' }}"
+
+            echo "=== [2/4] Pulling latest code and migrations from git ==="
+            git pull origin main
+
+            echo "=== [3/4] Running database migrations with Tern ==="
+            if docker compose version > /dev/null 2>&1; then
+              DC="docker compose"
+            else
+              DC="docker-compose"
+            fi
+
+            $DC rm -f migrations 2>/dev/null || true
+            $DC run --rm migrations
+
+            echo "=== [4/4] Updating and restarting services ==="
+            $DC pull api security_checker
+            $DC up -d api security_checker
+
+            echo "=== Deployment and migrations completed successfully! ==="
+

@@ -1,0 +1,92 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_tag:
+        description: 'Target Docker Tag or Commit SHA to rollback to (e.g. 7-char short SHA or full commit SHA)'
+        required: true
+        type: string
+      service:
+        description: 'Which service to rollback?'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - api
+          - security_checker
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Retag API image to latest
+        if: ${{ inputs.service == 'all' || inputs.service == 'api' }}
+        run: |
+          echo "Retagging timur1414/asvt-api:${{ inputs.target_tag }} as :latest on Docker Hub..."
+          docker buildx imagetools create \
+            timur1414/asvt-api:${{ inputs.target_tag }} \
+            --tag timur1414/asvt-api:latest
+
+      - name: Retag Security Checker image to latest
+        if: ${{ inputs.service == 'all' || inputs.service == 'security_checker' }}
+        run: |
+          echo "Retagging timur1414/asvt-security-checker:${{ inputs.target_tag }} as :latest on Docker Hub..."
+          docker buildx imagetools create \
+            timur1414/asvt-security-checker:${{ inputs.target_tag }} \
+            --tag timur1414/asvt-security-checker:latest
+
+      - name: Immediate container restart via SSH (optional)
+        if: ${{ env.SSH_HOST != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY || secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd "${{ secrets.WORK_DIR || '.' }}"
+            if docker compose version > /dev/null 2>&1; then
+              DC="docker compose"
+            else
+              DC="docker-compose"
+            fi
+
+            if [ "${{ inputs.service }}" = "all" ]; then
+              TARGETS="api security_checker"
+            else
+              TARGETS="${{ inputs.service }}"
+            fi
+
+            echo "Pulling rolled back images: $TARGETS"
+            $DC pull $TARGETS
+            $DC up -d $TARGETS
+
+      - name: Rollback summary
+        run: |
+          echo "### Rollback Completed Successfully! :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Tag/SHA:** \`${{ inputs.target_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service(s):** \`${{ inputs.service }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Docker Hub \`:latest\` tag now points to \`${{ inputs.target_tag }}\`." >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ secrets.SSH_HOST }}" ]; then
+            echo "Containers were immediately updated via SSH." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Watchtower will automatically detect the new image digest on the server and update running containers." >> $GITHUB_STEP_SUMMARY
+          fi
