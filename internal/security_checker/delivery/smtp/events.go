@@ -1,25 +1,26 @@
 package smtp
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"time"
 
 	"github.com/Timur1414/asvt/internal/security_checker/domain"
+	"github.com/Timur1414/asvt/internal/security_checker/videobuffer"
 	"github.com/Timur1414/asvt/pkg/logger"
 	"github.com/wneessen/go-mail"
 	"go.uber.org/zap"
 )
 
 type EventsNotifier struct {
+	videoExtractor videobuffer.VideoExtractor
 }
 
-func NewEventsNotifier() *EventsNotifier {
-	return &EventsNotifier{}
+func NewEventsNotifier(extractor videobuffer.VideoExtractor) *EventsNotifier {
+	return &EventsNotifier{
+		videoExtractor: extractor,
+	}
 }
 
 func (obj *EventsNotifier) Notify(objects []domain.DetectedObject, startFragmentTime time.Time, endFragmentTime time.Time) {
@@ -31,22 +32,27 @@ func (obj *EventsNotifier) Notify(objects []domain.DetectedObject, startFragment
 	}
 	if err := m.To(os.Getenv("MAIL_TO")); err != nil {
 		log.Fatal("failed to set 'to' email", zap.Error(err))
+		return
 	}
 	m.Subject("Events Notifier")
 	plainText := "Оповещение от Дозора. Камера обнаружила подозрительные объекты:\n"
 	htmlText := "<h1>Оповещение от Дозора</h1><p>Камера обнаружила подозрительные объекты:</p>"
 	for _, object := range objects {
-		plainText += object.ClassName + " с вероятностью " + strconv.FormatFloat(float64(object.Confidence), 'f', 3, 64) + " находится в поле зрения более 15 секунд\n"
-		htmlText += "<p>" + object.ClassName + " с вероятностью " + strconv.FormatFloat(float64(object.Confidence), 'f', 3, 64) + " находится в поле зрения более 15 секунд</p>"
+		plainText += object.ClassName + " с вероятностью " + strconv.FormatFloat(float64(object.Confidence), 'f', 3, 64) + " находился в поле зрения более 15 секунд\n"
+		htmlText += "<p>" + object.ClassName + " с вероятностью " + strconv.FormatFloat(float64(object.Confidence), 'f', 3, 64) + " находился в поле зрения более 15 секунд</p>"
 	}
-	rtspURL := os.Getenv("CAMERA_STREAM_URL")
-	frameBytes, err := generateVideoClip(startFragmentTime, endFragmentTime)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	videoPath, err := obj.videoExtractor.ExtractClip(ctx, startFragmentTime, endFragmentTime)
 	if err != nil {
-		log.Error("failed to capture frame", zap.Error(err))
+		log.Error("failed to extract video clip from buffer", zap.Error(err))
 	} else {
-		videoPath := "/tmp/alert.mp4"
-		defer os.Remove(videoPath)
+		defer func() {
+			_ = os.Remove(videoPath)
+		}()
 		m.AttachFile(videoPath, mail.WithFileName("event_record.mp4"))
+		log.Info("attached video clip to mail", zap.String("path", videoPath))
 	}
 	m.SetBodyString(mail.TypeTextPlain, plainText)
 	m.AddAlternativeString(mail.TypeTextHTML, htmlText)
@@ -58,34 +64,13 @@ func (obj *EventsNotifier) Notify(objects []domain.DetectedObject, startFragment
 		mail.WithTLSPolicy(mail.TLSMandatory), // или mail.TLSOpportunistic
 	)
 	if err != nil {
-		log.Fatal("failed to create SMTP client", zap.Error(err))
+		log.Error("failed to create SMTP client", zap.Error(err))
 		return
 	}
 	defer client.Close()
 	if err = client.DialAndSend(m); err != nil {
-		log.Fatal("failed to send email", zap.Error(err))
+		log.Error("failed to send email", zap.Error(err))
 		return
 	}
-	log.Info("email sent")
-}
-
-func generateVideoClip(startTime, endTime time.Time) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-rtsp_transport", "tcp",
-		"-i", rtspURL,
-		"-vframes", "1",
-		"-f", "image2pipe",
-		"-vcodec", "mjpeg",
-		"pipe:1",
-	)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("ffmpeg capture error: %w, stderr: %s", err, stderr.String())
-	}
-	return stdout.Bytes(), nil
+	log.Info("email sent successfully")
 }

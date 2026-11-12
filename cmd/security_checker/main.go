@@ -9,6 +9,7 @@ import (
 	"github.com/Timur1414/asvt/internal/security_checker/delivery/smtp"
 	"github.com/Timur1414/asvt/internal/security_checker/repository"
 	"github.com/Timur1414/asvt/internal/security_checker/usecase"
+	"github.com/Timur1414/asvt/internal/security_checker/videobuffer"
 	"github.com/Timur1414/asvt/pkg/cache"
 	"github.com/Timur1414/asvt/pkg/database"
 	"github.com/Timur1414/asvt/pkg/logger"
@@ -76,7 +77,19 @@ func main() {
 	log.Info("Repository initialized")
 	eventsUsecase := usecase.NewEvents(objectsRepo, eventsRepo)
 	log.Info("Usecase initialized")
-	handler := smtp.NewEventsNotifier()
+	bufferDir := os.Getenv("VIDEO_BUFFER_DIR")
+	if bufferDir == "" {
+		bufferDir = "/app/buffer"
+	}
+	videoBuf := videobuffer.NewVideoBuffer(videobuffer.Config{
+		StreamURL:       os.Getenv("CAMERA_STREAM_URL"),
+		BufferDir:       bufferDir,
+		SegmentDuration: 2,
+		Retention:       10 * time.Minute,
+	})
+	videoBuf.Start(context.Background())
+	defer videoBuf.Stop()
+	handler := smtp.NewEventsNotifier(videoBuf)
 	log.Info("Delivery initialized")
 
 	interval := time.Second
@@ -94,12 +107,6 @@ func main() {
 			time.Sleep(interval)
 			continue
 		}
-		err = eventsUsecase.SaveObjects(checkCtx, suspiciousObjects)
-		if err != nil {
-			log.Error("Failed to save suspicious objects", zap.Error(err))
-			time.Sleep(interval)
-			continue
-		}
 		succeededObjects, startFragmentTime, endFragmentTime, err := eventsUsecase.GetPostRollObjects(checkCtx, suspiciousObjects)
 		if err != nil {
 			log.Error("Failed to get post roll objects", zap.Error(err))
@@ -107,6 +114,12 @@ func main() {
 			continue
 		}
 		if len(succeededObjects) > 0 {
+			err = eventsUsecase.SaveObjects(checkCtx, succeededObjects)
+			if err != nil {
+				log.Error("Failed to save suspicious objects", zap.Error(err))
+				time.Sleep(interval)
+				continue
+			}
 			handler.Notify(succeededObjects, startFragmentTime, endFragmentTime)
 		}
 		select {

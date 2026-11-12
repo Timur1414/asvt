@@ -24,7 +24,7 @@ type EventsRepository interface {
 
 const (
 	detectedObjectPrefix = "obj:"
-	detectedObjectTTL    = time.Second * 3
+	detectedObjectTTL    = 10 * time.Minute
 )
 
 type ObjectsRedis struct {
