@@ -73,7 +73,7 @@ func (obj *Events) GetPostRollObjects(ctx context.Context, detectedObjects []dom
 	var startFragmentTime time.Time
 	var endFragmentTime time.Time
 	for _, detectedObject := range detectedObjects {
-		if detectedObject.Status == domain.StatusWaitingPostRoll && time.Since(detectedObject.LastSeenAt) >= 5*time.Second {
+		if detectedObject.Status == domain.StatusWaitingPostRoll && time.Since(detectedObject.LastSeenAt) >= 9*time.Second {
 			detectedObject.Status = domain.StatusCompleted
 			res = append(res, detectedObject)
 			if startFragmentTime.IsZero() || detectedObject.CreatedAt.Before(startFragmentTime) {
@@ -95,8 +95,8 @@ func (obj *Events) GetPostRollObjects(ctx context.Context, detectedObjects []dom
 	if len(res) == 0 {
 		return res, startFragmentTime, endFragmentTime, nil
 	}
-	startFragmentTime = startFragmentTime.Add(-4 * time.Second)
-	endFragmentTime = endFragmentTime.Add(4 * time.Second)
+	startFragmentTime = startFragmentTime.Add(-5 * time.Second)
+	endFragmentTime = endFragmentTime.Add(7 * time.Second)
 	return res, startFragmentTime, endFragmentTime, nil
 }
 
