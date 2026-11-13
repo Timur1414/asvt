@@ -39,17 +39,19 @@ func (obj *Detection) Detect(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Info("DetectRequest received", zap.Any("request", request))
 	for _, detectedObj := range request.Objects {
-		_, err = obj.detectUsecase.MatchOrCreate(r.Context(), domain.DetectedObject{
-			Uuid:       "",
-			ClassId:    detectedObj.ClassId,
-			ClassName:  detectedObj.ClassName,
-			Confidence: detectedObj.Confidence,
-			X:          detectedObj.Bbox.X,
-			Y:          detectedObj.Bbox.Y,
-			Width:      detectedObj.Bbox.Width,
-			Height:     detectedObj.Bbox.Height,
-			CreatedAt:  time.Time{},
-		})
+		if detectedObj.ClassName == "person" || detectedObj.ClassName == "car" {
+			_, err = obj.detectUsecase.MatchOrCreate(r.Context(), domain.DetectedObject{
+				Uuid:       "",
+				ClassId:    detectedObj.ClassId,
+				ClassName:  detectedObj.ClassName,
+				Confidence: detectedObj.Confidence,
+				X:          detectedObj.Bbox.X,
+				Y:          detectedObj.Bbox.Y,
+				Width:      detectedObj.Bbox.Width,
+				Height:     detectedObj.Bbox.Height,
+				CreatedAt:  time.Time{},
+			})
+		}
 	}
 	response := web_helpers.NewOkResponse()
 	web_helpers.WriteResponseJSON(w, response.Code, response)

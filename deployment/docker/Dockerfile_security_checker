@@ -11,7 +11,7 @@ FROM alpine:3.21
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 RUN apk add --no-cache ffmpeg ca-certificates tzdata
 WORKDIR /app
-RUN mkdir -p /app/log && chown -R appuser:appgroup /app
+RUN mkdir -p /app/log /app/buffer && chown -R appuser:appgroup /app
 COPY --from=builder /app/bin/security_checker /app/security_checker
 USER appuser
 CMD ["/app/security_checker"]

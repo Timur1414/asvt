@@ -171,8 +171,11 @@ func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time
 		return "", fmt.Errorf("failed to read buffer playlist: %w", err)
 	}
 	segments, err := ParsePlaylist(string(data), obj.cfg.BufferDir)
-	if err != nil || len(segments) == 0 {
-		return "", fmt.Errorf("no segments found in playlist: %w", err)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse playlist: %w", err)
+	}
+	if len(segments) == 0 {
+		return "", fmt.Errorf("no segments found in playlist")
 	}
 	startTime = startTime.UTC()
 	endTime = endTime.UTC()
@@ -285,9 +288,15 @@ func parseISOTime(str string) (time.Time, error) {
 		time.RFC3339Nano,
 		time.RFC3339,
 		"2006-01-02T15:04:05.999999999Z07:00",
+		"2006-01-02T15:04:05.999999999Z0700",
+		"2006-01-02T15:04:05.999999999-0700",
 		"2006-01-02T15:04:05.999999999",
 		"2006-01-02T15:04:05.999Z07:00",
+		"2006-01-02T15:04:05.999Z0700",
+		"2006-01-02T15:04:05.999-0700",
 		"2006-01-02T15:04:05.999",
+		"2006-01-02T15:04:05Z0700",
+		"2006-01-02T15:04:05-0700",
 		"2006-01-02T15:04:05",
 	}
 	for _, f := range formats {
