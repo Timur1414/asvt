@@ -95,7 +95,8 @@ func (obj *Events) GetPostRollObjects(ctx context.Context, detectedObjects []dom
 	if len(res) == 0 {
 		return res, startFragmentTime, endFragmentTime, nil
 	}
-	startFragmentTime = startFragmentTime.Add(-5 * time.Second)
+	startFragmentTime = startFragmentTime.Add(-4 * time.Second)
+	endFragmentTime = endFragmentTime.Add(4 * time.Second)
 	return res, startFragmentTime, endFragmentTime, nil
 }
 
