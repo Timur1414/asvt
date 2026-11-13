@@ -182,6 +182,12 @@ func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time
 	if endTime.Before(startTime) {
 		return "", fmt.Errorf("invalid interval: endTime before startTime")
 	}
+	log := logger.GetLogger()
+	log.Info("ExtractClip requested",
+		zap.Time("startTime", startTime),
+		zap.Time("endTime", endTime),
+		zap.Int("totalSegmentsInPlaylist", len(segments)),
+	)
 	var selected []HLSSegment
 	for _, seg := range segments {
 		segEnd := seg.StartTime.Add(seg.Duration)
@@ -195,6 +201,13 @@ func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time
 		return "", fmt.Errorf("no segments matching range %s - %s",
 			startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	}
+	log.Info("Selected segments for clip",
+		zap.Int("count", len(selected)),
+		zap.String("firstSeg", selected[0].Filename),
+		zap.Time("firstSegStart", selected[0].StartTime),
+		zap.String("lastSeg", selected[len(selected)-1].Filename),
+		zap.Time("lastSegEnd", selected[len(selected)-1].StartTime.Add(selected[len(selected)-1].Duration)),
+	)
 
 	firstSegStart := selected[0].StartTime
 	offset := startTime.Sub(firstSegStart)
