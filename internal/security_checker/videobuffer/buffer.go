@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Timur1414/asvt/internal/security_checker/videobuffer/crypto"
 	"github.com/Timur1414/asvt/pkg/logger"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -27,6 +29,7 @@ type Config struct {
 
 type VideoExtractor interface {
 	ExtractClip(ctx context.Context, startTime, endTime time.Time) (string, error)
+	ExtractClipWithPassport(ctx context.Context, startTime, endTime time.Time) (string, string, error)
 }
 
 type HLSSegment struct {
@@ -36,9 +39,10 @@ type HLSSegment struct {
 }
 
 type VideoBuffer struct {
-	cfg        Config
-	cancelFunc context.CancelFunc
-	wg         sync.WaitGroup
+	cfg         Config
+	cancelFunc  context.CancelFunc
+	wg          sync.WaitGroup
+	chainSigner *ChainSigner
 }
 
 func NewVideoBuffer(cfg Config) *VideoBuffer {
@@ -51,8 +55,16 @@ func NewVideoBuffer(cfg Config) *VideoBuffer {
 	if cfg.Retention <= 0 {
 		cfg.Retention = 10 * time.Minute
 	}
+	signer, err := crypto.NewDefaultSigner()
+	var chainSigner *ChainSigner
+	if err != nil {
+		logger.GetLogger().Error("failed to initialize default signer", zap.Error(err))
+	} else {
+		chainSigner = NewChainSigner(signer)
+	}
 	return &VideoBuffer{
-		cfg: cfg,
+		cfg:         cfg,
+		chainSigner: chainSigner,
 	}
 }
 
@@ -68,10 +80,11 @@ func (obj *VideoBuffer) Start(parentCtx context.Context) {
 	}
 	ctx, cancel := context.WithCancel(parentCtx)
 	obj.cancelFunc = cancel
-	obj.wg.Add(2)
+	obj.wg.Add(3)
 	go obj.recordStreamLoop(ctx)
+	go obj.signingLoop(ctx)
 	go obj.cleanupLoop(ctx)
-	log.Info("VideoBuffer service started",
+	log.Info("VideoBuffer service started with cryptographic chain signing",
 		zap.String("stream", obj.cfg.StreamURL),
 		zap.String("dir", obj.cfg.BufferDir),
 		zap.Duration("retention", obj.cfg.Retention),
@@ -134,6 +147,53 @@ func (obj *VideoBuffer) recordStreamLoop(ctx context.Context) {
 	}
 }
 
+func (obj *VideoBuffer) signingLoop(ctx context.Context) {
+	defer obj.wg.Done()
+	if obj.chainSigner == nil {
+		return
+	}
+	log := logger.GetLogger()
+	signedFiles := make(map[string]bool)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	playlistPath := filepath.Join(obj.cfg.BufferDir, "playlist.m3u8")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			data, err := os.ReadFile(playlistPath)
+			if err != nil {
+				continue
+			}
+			segments, err := ParsePlaylist(string(data), obj.cfg.BufferDir)
+			if err != nil {
+				continue
+			}
+			for _, seg := range segments {
+				if signedFiles[seg.Filename] {
+					continue
+				}
+				if _, err := os.Stat(seg.Filename); err != nil {
+					continue
+				}
+				manifest, err := obj.chainSigner.SignTSFile(seg.Filename, seg.StartTime, seg.Duration.Seconds())
+				if err != nil {
+					log.Warn("Failed to sign segment", zap.String("file", seg.Filename), zap.Error(err))
+					continue
+				}
+				signedFiles[seg.Filename] = true
+				log.Info("Cryptographically signed segment",
+					zap.String("segment", seg.Filename),
+					zap.Uint64("seq", manifest.SequenceNumber),
+					zap.String("merkleRoot", manifest.MerkleRoot),
+					zap.Int("frames", manifest.FrameCount),
+				)
+			}
+		}
+	}
+}
+
 func (obj *VideoBuffer) cleanupLoop(ctx context.Context) {
 	defer obj.wg.Done()
 	ticker := time.NewTicker(2 * time.Minute)
@@ -165,22 +225,27 @@ func (obj *VideoBuffer) cleanupLoop(ctx context.Context) {
 }
 
 func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time.Time) (string, error) {
+	videoPath, _, err := obj.ExtractClipWithPassport(ctx, startTime, endTime)
+	return videoPath, err
+}
+
+func (obj *VideoBuffer) ExtractClipWithPassport(ctx context.Context, startTime, endTime time.Time) (string, string, error) {
 	playlistPath := filepath.Join(obj.cfg.BufferDir, "playlist.m3u8")
 	data, err := os.ReadFile(playlistPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read buffer playlist: %w", err)
+		return "", "", fmt.Errorf("failed to read buffer playlist: %w", err)
 	}
 	segments, err := ParsePlaylist(string(data), obj.cfg.BufferDir)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse playlist: %w", err)
+		return "", "", fmt.Errorf("failed to parse playlist: %w", err)
 	}
 	if len(segments) == 0 {
-		return "", fmt.Errorf("no segments found in playlist")
+		return "", "", fmt.Errorf("no segments found in playlist")
 	}
 	startTime = startTime.UTC()
 	endTime = endTime.UTC()
 	if endTime.Before(startTime) {
-		return "", fmt.Errorf("invalid interval: endTime before startTime")
+		return "", "", fmt.Errorf("invalid interval: endTime before startTime")
 	}
 	log := logger.GetLogger()
 	log.Info("ExtractClip requested",
@@ -198,7 +263,7 @@ func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time
 		}
 	}
 	if len(selected) == 0 {
-		return "", fmt.Errorf("no segments matching range %s - %s",
+		return "", "", fmt.Errorf("no segments matching range %s - %s",
 			startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	}
 	log.Info("Selected segments for clip",
@@ -208,7 +273,6 @@ func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time
 		zap.String("lastSeg", selected[len(selected)-1].Filename),
 		zap.Time("lastSegEnd", selected[len(selected)-1].StartTime.Add(selected[len(selected)-1].Duration)),
 	)
-
 	firstSegStart := selected[0].StartTime
 	offset := startTime.Sub(firstSegStart)
 	if offset < 0 {
@@ -218,18 +282,19 @@ func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time
 	if duration <= 0 {
 		duration = 5 * time.Second
 	}
-	concatFileName := filepath.Join(obj.cfg.BufferDir, fmt.Sprintf("concat_%s.txt", uuid.New().String()))
+	clipID := uuid.New().String()
+	concatFileName := filepath.Join(obj.cfg.BufferDir, fmt.Sprintf("concat_%s.txt", clipID))
 	var concatContent strings.Builder
 	for _, seg := range selected {
 		escapedPath := strings.ReplaceAll(seg.Filename, "\\", "/")
 		concatContent.WriteString(fmt.Sprintf("file '%s'\n", escapedPath))
 	}
 	if err := os.WriteFile(concatFileName, []byte(concatContent.String()), 0644); err != nil {
-		return "", fmt.Errorf("failed to write concat list: %w", err)
+		return "", "", fmt.Errorf("failed to write concat list: %w", err)
 	}
 	defer os.Remove(concatFileName)
 
-	outputFileName := filepath.Join(obj.cfg.BufferDir, fmt.Sprintf("alert_%s.mp4", uuid.New().String()))
+	outputFileName := filepath.Join(obj.cfg.BufferDir, fmt.Sprintf("alert_%s.mp4", clipID))
 	args := []string{
 		"-y",
 		"-f", "concat",
@@ -244,9 +309,44 @@ func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		_ = os.Remove(outputFileName)
-		return "", fmt.Errorf("ffmpeg clip extraction error: %w, stderr: %s", err, stderr.String())
+		return "", "", fmt.Errorf("ffmpeg clip extraction error: %w, stderr: %s", err, stderr.String())
 	}
-	return outputFileName, nil
+
+	var manifests []crypto.SegmentManifest
+	for _, seg := range selected {
+		sigPath := strings.TrimSuffix(seg.Filename, filepath.Ext(seg.Filename)) + ".sig.json"
+		if sigData, err := os.ReadFile(sigPath); err == nil {
+			var m crypto.SegmentManifest
+			if jsonErr := json.Unmarshal(sigData, &m); jsonErr == nil {
+				manifests = append(manifests, m)
+			}
+		}
+	}
+
+	var passportPath string
+	if len(manifests) > 0 {
+		verified, verifyErr := VerifyChainIntegrity(manifests)
+		if verifyErr != nil {
+			log.Warn("Integrity chain check reported issues", zap.Error(verifyErr))
+		}
+		passport := VideoClipPassport{
+			ClipID:            clipID,
+			StartTime:         startTime.Format(time.RFC3339Nano),
+			EndTime:           endTime.Format(time.RFC3339Nano),
+			SegmentCount:      len(manifests),
+			Segments:          manifests,
+			IntegrityVerified: verified,
+		}
+		passportPath = filepath.Join(obj.cfg.BufferDir, fmt.Sprintf("alert_%s.passport.json", clipID))
+		if passportBytes, err := json.MarshalIndent(passport, "", "  "); err == nil {
+			_ = os.WriteFile(passportPath, passportBytes, 0644)
+			log.Info("Generated evidence passport for clip",
+				zap.String("passportPath", passportPath),
+				zap.Bool("verified", verified),
+			)
+		}
+	}
+	return outputFileName, passportPath, nil
 }
 
 func ParsePlaylist(content string, bufferDir string) ([]HLSSegment, error) {

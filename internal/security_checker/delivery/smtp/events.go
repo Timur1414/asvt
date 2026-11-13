@@ -44,15 +44,22 @@ func (obj *EventsNotifier) Notify(objects []domain.DetectedObject, startFragment
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	videoPath, err := obj.videoExtractor.ExtractClip(ctx, startFragmentTime, endFragmentTime)
+	videoPath, passportPath, err := obj.videoExtractor.ExtractClipWithPassport(ctx, startFragmentTime, endFragmentTime)
 	if err != nil {
 		log.Error("failed to extract video clip from buffer", zap.Error(err))
 	} else {
 		defer func() {
 			_ = os.Remove(videoPath)
+			if passportPath != "" {
+				_ = os.Remove(passportPath)
+			}
 		}()
 		m.AttachFile(videoPath, mail.WithFileName("event_record.mp4"))
 		log.Info("attached video clip to mail", zap.String("path", videoPath))
+		if passportPath != "" {
+			m.AttachFile(passportPath, mail.WithFileName("event_record.passport.json"))
+			log.Info("attached crypto passport to mail", zap.String("passportPath", passportPath))
+		}
 	}
 	m.SetBodyString(mail.TypeTextPlain, plainText)
 	m.AddAlternativeString(mail.TypeTextHTML, htmlText)
