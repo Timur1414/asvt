@@ -89,6 +89,7 @@ func main() {
 	})
 	mux.HandleFunc("POST /api/detection", detectionHandler.Detect)
 	mux.HandleFunc("GET /api/history", historyHandler.GetAll)
+	mux.HandleFunc("POST /api/toggle_mode", detectionHandler.ToggleMode)
 
 	handler := middleware.CORSMiddleware(mux)
 	handler = middleware.PanicMiddleware(handler)

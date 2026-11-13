@@ -23,3 +23,7 @@ type DetectRequest struct {
 	FrameHeight int                     `json:"frame_height"`
 	Objects     []DetectedObjectRequest `json:"objects"`
 }
+
+type ToggleModeRequest struct {
+	Mode bool `json:"mode"`
+}
