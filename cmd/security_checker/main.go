@@ -121,6 +121,10 @@ func main() {
 				continue
 			}
 			handler.Notify(succeededObjects, startFragmentTime, endFragmentTime)
+			err = eventsUsecase.DeleteObjects(checkCtx, suspiciousObjects)
+			if err != nil {
+				log.Error("Failed to delete succeeded objects", zap.Error(err))
+			}
 		}
 		select {
 		case <-checkCtx.Done():

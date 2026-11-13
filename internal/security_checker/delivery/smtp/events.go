@@ -34,7 +34,7 @@ func (obj *EventsNotifier) Notify(objects []domain.DetectedObject, startFragment
 		log.Fatal("failed to set 'to' email", zap.Error(err))
 		return
 	}
-	m.Subject("Events Notifier")
+	m.Subject("Внимание")
 	plainText := "Оповещение от Дозора. Камера обнаружила подозрительные объекты:\n"
 	htmlText := "<h1>Оповещение от Дозора</h1><p>Камера обнаружила подозрительные объекты:</p>"
 	for _, object := range objects {
@@ -42,7 +42,7 @@ func (obj *EventsNotifier) Notify(objects []domain.DetectedObject, startFragment
 		htmlText += "<p>" + object.ClassName + " с вероятностью " + strconv.FormatFloat(float64(object.Confidence), 'f', 3, 64) + " находился в поле зрения более 15 секунд</p>"
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	videoPath, err := obj.videoExtractor.ExtractClip(ctx, startFragmentTime, endFragmentTime)
 	if err != nil {

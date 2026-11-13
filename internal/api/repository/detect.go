@@ -20,7 +20,7 @@ type DetectRepository interface {
 
 const (
 	detectedObjectPrefix = "obj:"
-	detectedObjectTTL    = 10 * time.Minute
+	detectedObjectTTL    = 5 * time.Minute
 )
 
 type DetectRedis struct {

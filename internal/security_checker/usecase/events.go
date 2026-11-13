@@ -16,6 +16,7 @@ type EventsUseCase interface {
 	GetPostRollObjects(ctx context.Context, detectedObjects []domain.DetectedObject) ([]domain.DetectedObject, time.Time, time.Time, error)
 	SaveNewEvent(ctx context.Context, object domain.DetectedObject) error
 	SaveObjects(ctx context.Context, objects []domain.DetectedObject) error
+	DeleteObjects(ctx context.Context, objects []domain.DetectedObject) error
 }
 
 type Events struct {
@@ -94,7 +95,7 @@ func (obj *Events) GetPostRollObjects(ctx context.Context, detectedObjects []dom
 	if len(res) == 0 {
 		return res, startFragmentTime, endFragmentTime, nil
 	}
-	startFragmentTime = startFragmentTime.Add(-3 * time.Second)
+	startFragmentTime = startFragmentTime.Add(-5 * time.Second)
 	return res, startFragmentTime, endFragmentTime, nil
 }
 
@@ -111,6 +112,16 @@ func (obj *Events) SaveNewEvent(ctx context.Context, object domain.DetectedObjec
 func (obj *Events) SaveObjects(ctx context.Context, objects []domain.DetectedObject) error {
 	for _, object := range objects {
 		err := obj.SaveNewEvent(ctx, object)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (obj *Events) DeleteObjects(ctx context.Context, objects []domain.DetectedObject) error {
+	for _, object := range objects {
+		err := obj.objectsRepository.Delete(ctx, object.Uuid)
 		if err != nil {
 			return err
 		}

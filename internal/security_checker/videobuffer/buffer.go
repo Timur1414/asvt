@@ -219,14 +219,10 @@ func (obj *VideoBuffer) ExtractClip(ctx context.Context, startTime, endTime time
 	outputFileName := filepath.Join(obj.cfg.BufferDir, fmt.Sprintf("alert_%s.mp4", uuid.New().String()))
 	args := []string{
 		"-y",
-		"-ss", fmt.Sprintf("%.3f", offset.Seconds()),
 		"-f", "concat",
 		"-safe", "0",
 		"-i", concatFileName,
-		"-t", fmt.Sprintf("%.3f", duration.Seconds()),
-		"-c:v", "libx264",
-		"-preset", "ultrafast",
-		"-pix_fmt", "yuv420p",
+		"-c", "copy",
 		"-movflags", "+faststart",
 		outputFileName,
 	}
